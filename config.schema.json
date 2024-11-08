@@ -1,0 +1,22 @@
+{
+  "pluginAlias": "PhilipsAir",
+  "pluginType": "platform",
+  "singular": true,
+  "schema": {
+    "type": "object",
+    "properties": {
+      "ip": {
+        "title": "IP",
+        "type": "string",
+        "required": true,
+        "placeholder": "93.178.11.11"
+      },
+      "port": {
+        "title": "Port",
+        "type": "integer",
+        "required": true,
+        "default": 5683
+      }
+    }
+  }
+}
