@@ -2,7 +2,7 @@
   "name": "@kyoto1488/homebridge-philips-air",
   "displayName": "PhilipsAir",
   "type": "module",
-  "version": "0.6.0",
+  "version": "0.1.0",
   "private": false,
   "description": "Plugin for Philips Air",
   "author": "kyoyo1488",
