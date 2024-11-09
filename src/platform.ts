@@ -45,7 +45,7 @@ export class PhilipsAirHomebridgePlatform implements DynamicPlatformPlugin {
       if (this.config.ip && this.config.port) {
         PhilipsAPI.create(this.logger, this.config.ip, this.config.port)
           .then((api: PhilipsAPI) => {
-            api.runObserver();
+            api.observeState();
             this.discoverDevices(api);
           });
       }
