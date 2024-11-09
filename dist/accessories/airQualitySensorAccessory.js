@@ -36,7 +36,7 @@ export class AirQualitySensorAccessory {
                 this.service.updateCharacteristic(this.platform.Characteristic.AirQuality, this.getAirQualityForPM2_5(this.currentState.pm2_5));
                 this.service.updateCharacteristic(this.platform.Characteristic.PM2_5Density, this.currentState.pm2_5);
             }
-            setTimeout(callback, 30000);
+            setTimeout(callback, 10000);
         };
         callback();
     }
