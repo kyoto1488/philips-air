@@ -65,7 +65,7 @@ export class AirPurifierAccessory {
         this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
       });
 
-      setTimeout(callback.bind(this), 2000);
+      setTimeout(callback.bind(this), 3000);
     };
 
     callback();
