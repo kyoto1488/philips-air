@@ -31,7 +31,7 @@ export class PhilipsAirHomebridgePlatform {
             if (this.config.ip && this.config.port) {
                 PhilipsAPI.create(this.logger, this.config.ip, this.config.port)
                     .then((api) => {
-                    api.runObserver();
+                    api.observeState();
                     this.discoverDevices(api);
                 });
             }

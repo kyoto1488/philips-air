@@ -1,10 +1,11 @@
 import crypto from 'crypto';
-import coap from 'coap';
+import coap, { IncomingMessage } from 'coap';
 import { decrypt, encrypt, nextClientKey } from './encryption.js';
 import type { Logging } from 'homebridge';
-import { Status, Info, Mode, State, CommandResult } from './apiTypes.js';
+import { Status, Mode, CommandResult } from './apiTypes.js';
 import AsyncLock, { AsyncLockDoneCallback } from 'async-lock';
 import EventEmitter from 'node:events';
+import BufferListStream from 'bl';
 
 const lock = new AsyncLock({
   timeout: 60000,
@@ -28,19 +29,59 @@ export default class PhilipsAPI {
     return new PhilipsAPI(logger, host, port, clientKey);
   }
 
-  public runObserver(): void {
-    const callback = (): void => {
-      this.getState()
-        .then((currentState: State): void => {
-          this.getEventEmitter().emit('source:state', currentState);
-        })
-        .catch((): null => null)
-        .finally((): void => {
-          setTimeout(this.runObserver.bind(this), 5000);
-        });
-    };
+  public observeState(): void {
+    this.logger.debug('Attempt to make a request to get the device status');
 
-    callback();
+    const request = coap.request({
+      host: this.host,
+      port: this.port,
+      method: 'GET',
+      pathname: '/sys/dev/status',
+      observe: true,
+    });
+
+    request.on('response', (incomingMessage): void => {
+      incomingMessage.on('data', (data: Buffer): void => {
+        const parsedData = decrypt(data.toString());
+        const parsed = parsedData.state.reported;
+
+        this.logger.debug('Status received from the device', parsed);
+
+        let mode: Mode = Mode.GENERAL_AUTO;
+        switch (parsed['D03-12']) {
+        case 'Turbo':
+          mode = Mode.TURBO;
+          break;
+        case 'Sleep':
+          mode = Mode.SLEEP;
+          break;
+        }
+
+        let status: Status = Status.OFF;
+        switch (parsed['D03-02']) {
+        case 'ON':
+          status = Status.ON;
+          break;
+        case 'OFF':
+          status = Status.OFF;
+          break;
+        }
+
+        this.eventEmitter.emit('source:state', {
+          pm2_5: parsed['D03-33'],
+          mode,
+          status,
+        });
+      });
+    });
+
+    request.on('error', (err) => {
+      this.logger.error('Error while request on state', err);
+
+      this.observeState();
+    });
+
+    request.end();
   }
 
   private static getSync(host: string, port: number): Promise<Buffer> {
@@ -59,13 +100,15 @@ export default class PhilipsAPI {
 
         request.write(Buffer.from(payload));
 
-        request.on('response', (incomingMessage) => {
-          incomingMessage.on('data', (data: Buffer) => {
-            done(null, data);
-          });
+        request.on('response', (response: IncomingMessage): void => {
+          response.pipe(BufferListStream((err: Error, buffer: Buffer): void => {
+            if (buffer) {
+              done(null, buffer);
+            }
+          }));
         });
 
-        request.on('error', (err) => {
+        request.on('error', (err): void => {
           done(err);
         });
 
@@ -82,129 +125,6 @@ export default class PhilipsAPI {
       };
 
       lock.acquire('api:get_sync', fn, cb);
-    });
-  }
-
-  public getInfo(): Promise<Info> {
-    this.logger.info('Attempt to make a request to retrieve device information');
-
-    return new Promise((resolve, reject): void => {
-      const fn = (done: AsyncLockDoneCallback<Info>): void => {
-        const request = coap.request({
-          host: this.host,
-          port: this.port,
-          method: 'GET',
-          pathname: '/sys/dev/info',
-        });
-
-        request.on('response', (incomingMessage) => {
-          incomingMessage.on('data', (data: Buffer) => {
-            const parsed = JSON.parse(data.toString());
-
-            done(null, {
-              name: parsed['D01-03'],
-              model: parsed['D01-05'],
-            });
-          });
-        });
-
-        request.on('error', (err) => {
-          done(err);
-        });
-
-        request.end();
-      };
-
-      const cb: AsyncLockDoneCallback<Info> = (err?: Error|null, ret?: Info) => {
-        if (err) {
-          this.logger.error('An error occurred during the API request', err);
-
-          reject(err);
-        }
-
-        if (ret) {
-          resolve(ret);
-        }
-      };
-
-      lock.acquire('api:get_info', fn, cb);
-    });
-  }
-
-  public getState(): Promise<State> {
-    this.logger.debug('Attempt to make a request to retrieve the state');
-
-    return new Promise((resolve, reject): void => {
-      const fn = (done: AsyncLockDoneCallback<State>): void => {
-        const request = coap.request({
-          host: this.host,
-          port: this.port,
-          method: 'GET',
-          pathname: '/sys/dev/status',
-          observe: true,
-          retrySend: 10,
-        });
-
-        request.on('response', (incomingMessage) => {
-          incomingMessage.on('data', (data: Buffer) => {
-            const parsedData = decrypt(data.toString());
-            const parsed = parsedData.state.reported;
-            incomingMessage.close();
-
-            this.logger.debug('Status received from the device', parsed);
-
-            let mode: Mode = Mode.GENERAL_AUTO;
-            switch (parsed['D03-12']) {
-            case 'Turbo':
-              mode = Mode.TURBO;
-              break;
-            case 'Sleep':
-              mode = Mode.SLEEP;
-              break;
-            }
-
-            let status: Status = Status.OFF;
-            switch (parsed['D03-02']) {
-            case 'ON':
-              status = Status.ON;
-              break;
-            case 'OFF':
-              status = Status.OFF;
-              break;
-            }
-
-            done(null, {
-              pm2_5: parsed['D03-33'],
-              mode,
-              status,
-            });
-          });
-        });
-
-        request.on('error', (err) => {
-          this.logger.error('Error while request on state', err);
-          PhilipsAPI.getSync(this.host, this.port)
-            .then(token => {
-              this.clientKey = token.toString();
-              done(err);
-            })
-            .catch(() => done(err));
-        });
-
-        request.end();
-      };
-
-      const cb: AsyncLockDoneCallback<State> = (err?: Error|null, ret?: State): void => {
-        if (err) {
-          reject(err);
-        }
-
-        if (ret) {
-          resolve(ret);
-        }
-      };
-
-      lock.acquire('api:get_state', fn, cb);
     });
   }
 
@@ -267,14 +187,21 @@ export default class PhilipsAPI {
           port: this.port,
           method: 'POST',
           pathname: '/sys/dev/control',
+          retrySend: 3,
         });
 
         request.write(payload);
 
-        request.on('response', (incomingMessage) => {
-          incomingMessage.on('data', (data: Buffer) => {
-            done(null, JSON.parse(data.toString()));
-          });
+        request.on('response', (response: IncomingMessage): void => {
+          response.pipe(BufferListStream((err: Error, buffer: Buffer): void => {
+            if (err) {
+              this.logger.error('Buffer error', err);
+            }
+
+            if (buffer) {
+              done(null, JSON.parse(buffer.toString()));
+            }
+          }));
         });
 
         request.on('error', (err) => {
