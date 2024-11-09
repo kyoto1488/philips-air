@@ -2,7 +2,7 @@
   "name": "@kyoto1488/homebridge-philips-air",
   "displayName": "Philips Air",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Plugin for Philips Air",
   "author": "kyoyo1488",
   "license": "Apache-2.0",
@@ -15,7 +15,9 @@
     "url": "https://github.com/kyoto1488/philips-air/issues"
   },
   "keywords": [
-    "homebridge-plugin", "philips", "air"
+    "homebridge-plugin",
+    "philips",
+    "air"
   ],
   "main": "dist/index.js",
   "engines": {
@@ -43,6 +45,7 @@
   },
   "dependencies": {
     "async-lock": "^1.4.1",
+    "bl": "^6.0.16",
     "coap": "^1.4.0"
   }
 }
