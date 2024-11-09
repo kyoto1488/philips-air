@@ -51,7 +51,7 @@ export class AirQualitySensorAccessory {
         );
       }
 
-      setTimeout(callback, 30000);
+      setTimeout(callback, 10000);
     };
 
     callback();
