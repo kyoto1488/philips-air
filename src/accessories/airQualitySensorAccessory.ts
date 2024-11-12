@@ -8,7 +8,7 @@ export class AirQualitySensorAccessory {
   private service: Service;
   private currentState: State | undefined;
 
-  constructor(
+  public constructor(
         private readonly platform: PhilipsAirHomebridgePlatform,
         private readonly accessory: PlatformAccessory,
         private readonly logger: Logging,
@@ -32,17 +32,21 @@ export class AirQualitySensorAccessory {
     
     this.api.getEventEmitter().on('source:event', (currentState: State) => {
       this.currentState = currentState;
-
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.AirQuality,
-        this.getAirQualityCharacteristicValue(),
-      );
-
-      this.service.updateCharacteristic(
-        this.platform.Characteristic.PM2_5Density,
-        currentState.pm2_5,
-      );
     });
+
+    setInterval(() => {
+      if (this.currentState) {
+        this.service.updateCharacteristic(
+          this.platform.Characteristic.AirQuality,
+          this.getAirQualityCharacteristicValue(),
+        );
+
+        this.service.updateCharacteristic(
+          this.platform.Characteristic.PM2_5Density,
+          this.currentState.pm2_5,
+        );
+      }
+    }, 15000);
   }
 
   async getAirQuality(): Promise<CharacteristicValue> {

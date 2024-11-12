@@ -26,9 +26,13 @@ export class AirQualitySensorAccessory {
             .onGet(this.getPM2_5Density.bind(this));
         this.api.getEventEmitter().on('source:event', (currentState) => {
             this.currentState = currentState;
-            this.service.updateCharacteristic(this.platform.Characteristic.AirQuality, this.getAirQualityCharacteristicValue());
-            this.service.updateCharacteristic(this.platform.Characteristic.PM2_5Density, currentState.pm2_5);
         });
+        setInterval(() => {
+            if (this.currentState) {
+                this.service.updateCharacteristic(this.platform.Characteristic.AirQuality, this.getAirQualityCharacteristicValue());
+                this.service.updateCharacteristic(this.platform.Characteristic.PM2_5Density, this.currentState.pm2_5);
+            }
+        }, 15000);
     }
     async getAirQuality() {
         return this.getAirQualityCharacteristicValue();

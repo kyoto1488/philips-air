@@ -46,35 +46,21 @@ export class AirPurifierAccessory {
 
     this.api.getEventEmitter().on('source:state', (currentState: State): void => {
       this.currentState = currentState;
-
-      this.pushCurrentState();
     });
 
-    this.runIntervalPushState();
-  }
+    setInterval(() => {
+      this.getActiveStatus().then((status: CharacteristicValue): void => {
+        this.service.updateCharacteristic(this.platform.Characteristic.Active, status);
+      });
 
-  private runIntervalPushState(): void {
-    const callback = (): void => {
-      this.pushCurrentState();
+      this.getState().then((state: CharacteristicValue): void => {
+        this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, state);
+      });
 
-      setTimeout(callback.bind(this), 3000);
-    };
-
-    callback();
-  }
-
-  private pushCurrentState(): void {
-    this.getActiveStatus().then((status: CharacteristicValue): void => {
-      this.service.updateCharacteristic(this.platform.Characteristic.Active, status);
-    });
-
-    this.getState().then((state: CharacteristicValue): void => {
-      this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, state);
-    });
-
-    this.getTargetState().then((state: CharacteristicValue): void => {
-      this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
-    });
+      this.getTargetState().then((state: CharacteristicValue): void => {
+        this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
+      });
+    }, 3000);
   }
 
   public async getActiveStatus(): Promise<CharacteristicValue> {
