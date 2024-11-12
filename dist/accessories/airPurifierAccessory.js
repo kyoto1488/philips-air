@@ -39,27 +39,18 @@ export class AirPurifierAccessory {
             .onGet(this.getTargetState.bind(this));
         this.api.getEventEmitter().on('source:state', (currentState) => {
             this.currentState = currentState;
-            this.pushCurrentState();
         });
-        this.runIntervalPushState();
-    }
-    runIntervalPushState() {
-        const callback = () => {
-            this.pushCurrentState();
-            setTimeout(callback.bind(this), 3000);
-        };
-        callback();
-    }
-    pushCurrentState() {
-        this.getActiveStatus().then((status) => {
-            this.service.updateCharacteristic(this.platform.Characteristic.Active, status);
-        });
-        this.getState().then((state) => {
-            this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, state);
-        });
-        this.getTargetState().then((state) => {
-            this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
-        });
+        setInterval(() => {
+            this.getActiveStatus().then((status) => {
+                this.service.updateCharacteristic(this.platform.Characteristic.Active, status);
+            });
+            this.getState().then((state) => {
+                this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, state);
+            });
+            this.getTargetState().then((state) => {
+                this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
+            });
+        }, 3000);
     }
     async getActiveStatus() {
         if (this.currentState) {

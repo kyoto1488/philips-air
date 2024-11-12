@@ -12,8 +12,6 @@ export declare class AirPurifierAccessory {
     private currentState;
     private savedRotationSpeed;
     constructor(platform: PhilipsAirHomebridgePlatform, accessory: PlatformAccessory, logger: Logging, ip: string, port: number, api: PhilipsAPI);
-    private runIntervalPushState;
-    private pushCurrentState;
     getActiveStatus(): Promise<CharacteristicValue>;
     setActiveStatus(value: CharacteristicValue): Promise<void>;
     getState(): Promise<CharacteristicValue>;
