@@ -6,24 +6,18 @@ import AsyncLock from 'async-lock';
 import EventEmitter from 'node:events';
 import BufferListStream from 'bl';
 const lock = new AsyncLock({
-    timeout: 60000,
+    timeout: 15000,
 });
 export default class PhilipsAPI {
     logger;
     host;
     port;
-    clientKey;
     eventEmitter = new EventEmitter;
-    constructor(logger, host, port, clientKey) {
+    constructor(logger, host, port) {
         this.logger = logger;
         this.host = host;
         this.port = port;
-        this.clientKey = clientKey;
         this.logger.debug('An API client for the device has been created');
-    }
-    static async create(logger, host, port = 5683) {
-        const clientKey = (await PhilipsAPI.getSync(host, port)).toString();
-        return new PhilipsAPI(logger, host, port, clientKey);
     }
     observeState() {
         this.logger.debug('Attempt to make a request to get the device status');
@@ -34,8 +28,8 @@ export default class PhilipsAPI {
             pathname: '/sys/dev/status',
             observe: true,
         });
-        request.on('response', (incomingMessage) => {
-            incomingMessage.on('data', (data) => {
+        request.on('response', (response) => {
+            response.on('data', (data) => {
                 const parsedData = decrypt(data.toString());
                 const parsed = parsedData.state.reported;
                 this.logger.debug('Status received from the device', parsed);
@@ -70,15 +64,15 @@ export default class PhilipsAPI {
         });
         request.end();
     }
-    static getSync(host, port) {
+    getSync() {
         return new Promise((resolve, reject) => {
             const fn = (done) => {
                 const payload = crypto.randomBytes(4)
                     .toString('hex')
                     .toUpperCase();
                 const request = coap.request({
-                    host: host,
-                    port: port,
+                    host: this.host,
+                    port: this.port,
                     method: 'POST',
                     pathname: '/sys/dev/sync',
                 });
@@ -139,40 +133,44 @@ export default class PhilipsAPI {
         this.logger.debug('Attempt to execute a command on the device');
         return new Promise((resolve, reject) => {
             const fn = (done) => {
-                this.clientKey = nextClientKey(this.clientKey);
-                const state = {
-                    state: {
-                        desired: {
-                            CommandType: 'app',
-                            DeviceId: '',
-                            EnduserId: '',
-                            ...params,
+                this.getSync().then((buffer) => {
+                    const originalCounter = buffer.toString();
+                    this.logger.debug('The counter has been received from the device', originalCounter);
+                    const clientKey = nextClientKey(originalCounter);
+                    const state = {
+                        state: {
+                            desired: {
+                                CommandType: 'app',
+                                DeviceId: '',
+                                EnduserId: '',
+                                ...params,
+                            },
                         },
-                    },
-                };
-                const payload = encrypt(this.clientKey, JSON.stringify(state));
-                const request = coap.request({
-                    host: this.host,
-                    port: this.port,
-                    method: 'POST',
-                    pathname: '/sys/dev/control',
-                    retrySend: 3,
+                    };
+                    const payload = encrypt(clientKey, JSON.stringify(state));
+                    const request = coap.request({
+                        host: this.host,
+                        port: this.port,
+                        method: 'POST',
+                        pathname: '/sys/dev/control',
+                        retrySend: 3,
+                    });
+                    request.write(payload);
+                    request.on('response', (response) => {
+                        response.pipe(BufferListStream((err, buffer) => {
+                            if (err) {
+                                this.logger.error('Buffer error', err);
+                            }
+                            if (buffer) {
+                                done(null, JSON.parse(buffer.toString()));
+                            }
+                        }));
+                    });
+                    request.on('error', (err) => {
+                        done(err);
+                    });
+                    request.end();
                 });
-                request.write(payload);
-                request.on('response', (response) => {
-                    response.pipe(BufferListStream((err, buffer) => {
-                        if (err) {
-                            this.logger.error('Buffer error', err);
-                        }
-                        if (buffer) {
-                            done(null, JSON.parse(buffer.toString()));
-                        }
-                    }));
-                });
-                request.on('error', (err) => {
-                    done(err);
-                });
-                request.end();
             };
             const cb = (err, ret) => {
                 if (err) {

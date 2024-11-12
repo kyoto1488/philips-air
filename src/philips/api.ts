@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import coap, { IncomingMessage } from 'coap';
+import coap, { IncomingMessage, OutgoingMessage } from 'coap';
 import { decrypt, encrypt, nextClientKey } from './encryption.js';
 import type { Logging } from 'homebridge';
 import { Status, Mode, CommandResult } from './apiTypes.js';
@@ -8,31 +8,24 @@ import EventEmitter from 'node:events';
 import BufferListStream from 'bl';
 
 const lock = new AsyncLock({
-  timeout: 60000,
+  timeout: 15000,
 });
 
 export default class PhilipsAPI {
   private readonly eventEmitter: NodeJS.EventEmitter = new EventEmitter;
 
-  private constructor(
+  public constructor(
       private readonly logger: Logging,
       private readonly host: string,
       private readonly port: number,
-      private clientKey: string,
   ) {
     this.logger.debug('An API client for the device has been created');
-  }
-
-  public static async create(logger: Logging, host: string, port: number = 5683): Promise<PhilipsAPI> {
-    const clientKey: string = (await PhilipsAPI.getSync(host, port)).toString();
-
-    return new PhilipsAPI(logger, host, port, clientKey);
   }
 
   public observeState(): void {
     this.logger.debug('Attempt to make a request to get the device status');
 
-    const request = coap.request({
+    const request: OutgoingMessage = coap.request({
       host: this.host,
       port: this.port,
       method: 'GET',
@@ -40,8 +33,8 @@ export default class PhilipsAPI {
       observe: true,
     });
 
-    request.on('response', (incomingMessage): void => {
-      incomingMessage.on('data', (data: Buffer): void => {
+    request.on('response', (response: IncomingMessage): void => {
+      response.on('data', (data: Buffer): void => {
         const parsedData = decrypt(data.toString());
         const parsed = parsedData.state.reported;
 
@@ -84,16 +77,16 @@ export default class PhilipsAPI {
     request.end();
   }
 
-  private static getSync(host: string, port: number): Promise<Buffer> {
+  private getSync(): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const fn = (done: AsyncLockDoneCallback<Buffer>): void => {
         const payload = crypto.randomBytes(4)
           .toString('hex')
           .toUpperCase();
 
-        const request = coap.request({
-          host: host,
-          port: port,
+        const request: OutgoingMessage = coap.request({
+          host: this.host,
+          port: this.port,
           method: 'POST',
           pathname: '/sys/dev/sync',
         });
@@ -168,47 +161,53 @@ export default class PhilipsAPI {
 
     return new Promise((resolve, reject): void => {
       const fn = (done: AsyncLockDoneCallback<CommandResult>): void => {
-        this.clientKey = nextClientKey(this.clientKey);
-        const state = {
-          state: {
-            desired: {
-              CommandType: 'app',
-              DeviceId: '',
-              EnduserId: '',
-              ...params,
+        this.getSync().then((buffer: Buffer): void => {
+          const originalCounter = buffer.toString();
+          this.logger.debug('The counter has been received from the device', originalCounter);
+
+          const clientKey: string = nextClientKey(originalCounter);
+
+          const state = {
+            state: {
+              desired: {
+                CommandType: 'app',
+                DeviceId: '',
+                EnduserId: '',
+                ...params,
+              },
             },
-          },
-        };
+          };
 
-        const payload = encrypt(this.clientKey, JSON.stringify(state));
+          const payload = encrypt(clientKey, JSON.stringify(state));
 
-        const request = coap.request({
-          host: this.host,
-          port: this.port,
-          method: 'POST',
-          pathname: '/sys/dev/control',
-          retrySend: 3,
+          const request = coap.request({
+            host: this.host,
+            port: this.port,
+            method: 'POST',
+            pathname: '/sys/dev/control',
+            retrySend: 3,
+          });
+
+          request.write(payload);
+
+          request.on('response', (response: IncomingMessage): void => {
+            response.pipe(BufferListStream((err: Error, buffer: Buffer): void => {
+              if (err) {
+                this.logger.error('Buffer error', err);
+              }
+
+              if (buffer) {
+                done(null, JSON.parse(buffer.toString()));
+              }
+            }));
+          });
+
+          request.on('error', (err) => {
+            done(err);
+          });
+
+          request.end();
         });
-
-        request.write(payload);
-
-        request.on('response', (response: IncomingMessage): void => {
-          response.pipe(BufferListStream((err: Error, buffer: Buffer): void => {
-            if (err) {
-              this.logger.error('Buffer error', err);
-            }
-
-            if (buffer) {
-              done(null, JSON.parse(buffer.toString()));
-            }
-          }));
-        });
-
-        request.on('error', (err) => {
-          done(err);
-        });
-
-        request.end();
       };
 
       const cb: AsyncLockDoneCallback<CommandResult> = (err?: Error|null, ret?: CommandResult): void => {

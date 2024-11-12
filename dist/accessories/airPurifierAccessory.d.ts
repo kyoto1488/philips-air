@@ -4,15 +4,16 @@ import type { PhilipsAirHomebridgePlatform } from '../platform.js';
 export declare class AirPurifierAccessory {
     private readonly platform;
     private readonly accessory;
-    private readonly log;
+    private readonly logger;
     private readonly ip;
     private readonly port;
     private readonly api;
     private service;
     private currentState;
     private savedRotationSpeed;
-    constructor(platform: PhilipsAirHomebridgePlatform, accessory: PlatformAccessory, log: Logging, ip: string, port: number, api: PhilipsAPI);
+    constructor(platform: PhilipsAirHomebridgePlatform, accessory: PlatformAccessory, logger: Logging, ip: string, port: number, api: PhilipsAPI);
     private runIntervalPushState;
+    private pushCurrentState;
     getActiveStatus(): Promise<CharacteristicValue>;
     setActiveStatus(value: CharacteristicValue): Promise<void>;
     getState(): Promise<CharacteristicValue>;
@@ -20,4 +21,6 @@ export declare class AirPurifierAccessory {
     setTargetState(value: CharacteristicValue): Promise<void>;
     setRotationSpeed(value: CharacteristicValue): Promise<void>;
     getRotationSpeed(): Promise<CharacteristicValue>;
+    private changeMode;
+    private changeStatus;
 }
