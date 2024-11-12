@@ -30,7 +30,7 @@ export class AirQualitySensorAccessory {
     this.service.getCharacteristic(this.platform.Characteristic.PM2_5Density)
       .onGet(this.getPM2_5Density.bind(this));
     
-    this.api.getEventEmitter().on('source:event', (currentState: State) => {
+    this.api.getEventEmitter().on('source:state', (currentState: State) => {
       this.currentState = currentState;
     });
 
@@ -46,7 +46,7 @@ export class AirQualitySensorAccessory {
           this.currentState.pm2_5,
         );
       }
-    }, 15000);
+    }, 10000);
   }
 
   async getAirQuality(): Promise<CharacteristicValue> {
