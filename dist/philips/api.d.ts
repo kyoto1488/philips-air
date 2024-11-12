@@ -5,12 +5,10 @@ export default class PhilipsAPI {
     private readonly logger;
     private readonly host;
     private readonly port;
-    private clientKey;
     private readonly eventEmitter;
-    private constructor();
-    static create(logger: Logging, host: string, port?: number): Promise<PhilipsAPI>;
+    constructor(logger: Logging, host: string, port: number);
     observeState(): void;
-    private static getSync;
+    private getSync;
     changeStatus(status: Status): Promise<CommandResult>;
     changeMode(mode: Mode): Promise<CommandResult>;
     private sendCommand;

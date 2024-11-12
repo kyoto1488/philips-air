@@ -11,8 +11,7 @@ export declare class AirQualitySensorAccessory {
     private service;
     private currentState;
     constructor(platform: PhilipsAirHomebridgePlatform, accessory: PlatformAccessory, logger: Logging, ip: string, port: number, api: PhilipsAPI);
-    private runIntervalPushState;
-    getCommonQuality(): Promise<CharacteristicValue>;
-    private getAirQualityForPM2_5;
+    getAirQuality(): Promise<CharacteristicValue>;
     getPM2_5Density(): Promise<CharacteristicValue>;
+    private getAirQualityCharacteristicValue;
 }

@@ -1,6 +1,6 @@
 import { CharacteristicValue, type Logging, PlatformAccessory, Service } from 'homebridge';
 import PhilipsAPI from '../philips/api.js';
-import { Mode, State, Status } from '../philips/apiTypes.js';
+import { CommandResult, Mode, State, Status } from '../philips/apiTypes.js';
 import type { PhilipsAirHomebridgePlatform } from '../platform.js';
 
 export class AirPurifierAccessory {
@@ -15,7 +15,7 @@ export class AirPurifierAccessory {
   constructor(
         private readonly platform: PhilipsAirHomebridgePlatform,
         private readonly accessory: PlatformAccessory,
-        private readonly log: Logging,
+        private readonly logger: Logging,
         private readonly ip: string,
         private readonly port: number,
         private readonly api: PhilipsAPI,
@@ -44,26 +44,18 @@ export class AirPurifierAccessory {
       .onSet(this.setTargetState.bind(this))
       .onGet(this.getTargetState.bind(this));
 
-    this.runIntervalPushState();
-
     this.api.getEventEmitter().on('source:state', (currentState: State): void => {
       this.currentState = currentState;
+
+      this.pushCurrentState();
     });
+
+    this.runIntervalPushState();
   }
 
   private runIntervalPushState(): void {
     const callback = (): void => {
-      this.getActiveStatus().then(status => {
-        this.service.updateCharacteristic(this.platform.Characteristic.Active, status);
-      });
-
-      this.getState().then(state => {
-        this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, state);
-      });
-
-      this.getTargetState().then(state => {
-        this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
-      });
+      this.pushCurrentState();
 
       setTimeout(callback.bind(this), 3000);
     };
@@ -71,109 +63,85 @@ export class AirPurifierAccessory {
     callback();
   }
 
-  public async getActiveStatus(): Promise<CharacteristicValue> {
-    if (! this.currentState) {
-      return this.platform.Characteristic.Active.INACTIVE;
-    }
+  private pushCurrentState(): void {
+    this.getActiveStatus().then((status: CharacteristicValue): void => {
+      this.service.updateCharacteristic(this.platform.Characteristic.Active, status);
+    });
 
-    if (this.currentState.status === Status.ON) {
-      return this.platform.Characteristic.Active.ACTIVE;
+    this.getState().then((state: CharacteristicValue): void => {
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentAirPurifierState, state);
+    });
+
+    this.getTargetState().then((state: CharacteristicValue): void => {
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
+    });
+  }
+
+  public async getActiveStatus(): Promise<CharacteristicValue> {
+    if (this.currentState) {
+      if (this.currentState.status === Status.ON) {
+        return this.platform.Characteristic.Active.ACTIVE;
+      }
     }
 
     return this.platform.Characteristic.Active.INACTIVE;
   }
 
   public async setActiveStatus(value: CharacteristicValue) {
-    if (this.api) {
-      if (this.platform.Characteristic.Active.ACTIVE === value) {
-        await this.api.changeStatus(Status.ON);
+    if (this.platform.Characteristic.Active.ACTIVE === value) {
+      await this.changeStatus(Status.ON);
 
-        if (this.currentState) {
-          this.currentState.status = Status.ON;
-        }
-      } else if (this.platform.Characteristic.Active.INACTIVE === value) {
-        await this.api.changeStatus(Status.OFF);
-
-        if (this.currentState) {
-          this.currentState.status = Status.OFF;
-        }
-      }
+    } else if (this.platform.Characteristic.Active.INACTIVE === value) {
+      await this.changeStatus(Status.OFF);
     }
   }
 
   public async getState(): Promise<CharacteristicValue> {
-    if (! this.currentState) {
-      return this.platform.Characteristic.CurrentAirPurifierState.INACTIVE;
-    }
-
-    const state: State = this.currentState;
-
-    if (state.status === Status.OFF) {
-      return this.platform.Characteristic.CurrentAirPurifierState.INACTIVE;
+    if (this.currentState) {
+      if (this.currentState.status === Status.OFF) {
+        return this.platform.Characteristic.CurrentAirPurifierState.INACTIVE;
+      }
     }
 
     return this.platform.Characteristic.CurrentAirPurifierState.PURIFYING_AIR;
   }
 
   public async getTargetState(): Promise<CharacteristicValue> {
-    if (! this.currentState) {
-      return this.platform.Characteristic.TargetAirPurifierState.MANUAL;
-    }
-
-    const state: State = this.currentState;
-
-    if (state.mode === Mode.GENERAL_AUTO) {
-      return this.platform.Characteristic.TargetAirPurifierState.AUTO;
+    if (this.currentState) {
+      if (this.currentState.mode === Mode.GENERAL_AUTO) {
+        return this.platform.Characteristic.TargetAirPurifierState.AUTO;
+      }
     }
 
     return this.platform.Characteristic.TargetAirPurifierState.MANUAL;
   }
 
   public async setTargetState(value: CharacteristicValue) {
-    if (this.api) {
-      if (this.platform.Characteristic.TargetAirPurifierState.AUTO === value) {
-        await this.api.changeMode(Mode.GENERAL_AUTO);
+    if (this.platform.Characteristic.TargetAirPurifierState.AUTO === value) {
+      await this.changeMode(Mode.GENERAL_AUTO);
 
-        if (this.currentState) {
-          this.currentState.mode = Mode.GENERAL_AUTO;
-        }
-      } else if (this.platform.Characteristic.TargetAirPurifierState.MANUAL === value) {
-        await this.api.changeMode(Mode.TURBO);
-
-        if (this.currentState) {
-          this.currentState.mode = Mode.TURBO;
-        }
-      }
+    } else if (this.platform.Characteristic.TargetAirPurifierState.MANUAL === value) {
+      await this.changeMode(Mode.TURBO);
     }
   }
 
-  public async setRotationSpeed(value: CharacteristicValue): Promise<void> {
+  public async setRotationSpeed(value: CharacteristicValue) {
     if (typeof value === 'number') {
       if (value === 0) {
-        await this.api.changeStatus(Status.OFF);
-        this.currentState.status = Status.OFF;
+        await this.changeStatus(Status.OFF);
         this.savedRotationSpeed = 0;
+
       } else if (value > 0 && value <= 33) {
-        await this.api.changeMode(Mode.SLEEP);
-
+        await this.changeMode(Mode.SLEEP);
         this.savedRotationSpeed = value;
-        if (this.currentState) {
-          this.currentState.mode = Mode.SLEEP;
-        }
+
       } else if (value > 33 && value <= 66) {
-        await this.api.changeMode(Mode.GENERAL_AUTO);
-
+        await this.changeMode(Mode.GENERAL_AUTO);
         this.savedRotationSpeed = value;
-        if (this.currentState) {
-          this.currentState.mode = Mode.GENERAL_AUTO;
-        }
+
       } else if (value > 66) {
-        await this.api.changeMode(Mode.TURBO);
-
+        await this.changeMode(Mode.TURBO);
         this.savedRotationSpeed = value;
-        if (this.currentState) {
-          this.currentState.mode = Mode.TURBO;
-        }
       }
     }
   }
@@ -198,5 +166,43 @@ export class AirPurifierAccessory {
     }
 
     return 0;
+  }
+
+  private async changeMode(mode: Mode): Promise<CommandResult|null> {
+    let commandResult: CommandResult|null = null;
+    if (this.currentState) {
+      if (this.currentState.mode !== mode) {
+        commandResult = await this.api.changeMode(mode);
+      }
+    } else {
+      commandResult = await this.api.changeMode(mode);
+    }
+
+    if (commandResult && this.currentState && commandResult.status === 'success') {
+      this.currentState.mode = mode;
+
+      return commandResult;
+    } else {
+      return null;
+    }
+  }
+
+  private async changeStatus(status: Status): Promise<CommandResult|null> {
+    let commandResult: CommandResult|null = null;
+    if (this.currentState) {
+      if (this.currentState.status !== status) {
+        commandResult = await this.api.changeStatus(status);
+      }
+    } else {
+      commandResult = await this.api.changeStatus(status);
+    }
+
+    if (commandResult && this.currentState && commandResult.status === 'success') {
+      this.currentState.status = status;
+
+      return commandResult;
+    } else {
+      return null;
+    }
   }
 }

@@ -40,14 +40,16 @@ export class PhilipsAirHomebridgePlatform implements DynamicPlatformPlugin {
     // in order to ensure they weren't added to homebridge already. This event can also be used
     // to start discovery of new accessories.
     this.api.on('didFinishLaunching', () => {
-      logger.debug('Executed didFinishLaunching callback');
+      this.logger.debug('Executed didFinishLaunching callback');
 
       if (this.config.ip && this.config.port) {
-        PhilipsAPI.create(this.logger, this.config.ip, this.config.port)
-          .then((api: PhilipsAPI) => {
-            api.observeState();
-            this.discoverDevices(api);
-          });
+        const api: PhilipsAPI = new PhilipsAPI(
+          this.logger,
+          this.config.ip,
+          this.config.port,
+        );
+        api.observeState();
+        this.discoverDevices(api);
       }
     });
   }
