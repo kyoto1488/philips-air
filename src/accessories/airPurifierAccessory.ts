@@ -60,7 +60,7 @@ export class AirPurifierAccessory {
       this.getTargetState().then((state: CharacteristicValue): void => {
         this.service.updateCharacteristic(this.platform.Characteristic.TargetAirPurifierState, state);
       });
-    }, 3000);
+    }, 2000);
   }
 
   public async getActiveStatus(): Promise<CharacteristicValue> {
