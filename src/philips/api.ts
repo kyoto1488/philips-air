@@ -25,56 +25,73 @@ export default class PhilipsAPI {
   public observeState(): void {
     this.logger.debug('Attempt to make a request to get the device status');
 
-    const request: OutgoingMessage = coap.request({
-      host: this.host,
-      port: this.port,
-      method: 'GET',
-      pathname: '/sys/dev/status',
-      observe: true,
-    });
+    const onSuccess = (): void => {
+      const request: OutgoingMessage = coap.request({
+        host: this.host,
+        port: this.port,
+        method: 'GET',
+        pathname: '/sys/dev/status',
+        observe: true,
+      });
 
-    request.on('response', (response: IncomingMessage): void => {
-      response.on('data', (data: Buffer): void => {
-        const parsedData = decrypt(data.toString());
-        const parsed = parsedData.state.reported;
+      request.on('response', (response: IncomingMessage): void => {
+        response.on('data', (data: Buffer): void => {
+          const parsedData = decrypt(data.toString());
+          const parsed = parsedData.state.reported;
 
-        this.logger.debug('Status received from the device', parsed);
+          this.logger.debug('Status received from the device', parsed);
 
-        let mode: Mode = Mode.GENERAL_AUTO;
-        switch (parsed['D03-12']) {
-        case 'Turbo':
-          mode = Mode.TURBO;
-          break;
-        case 'Sleep':
-          mode = Mode.SLEEP;
-          break;
-        }
+          let mode: Mode = Mode.GENERAL_AUTO;
+          switch (parsed['D03-12']) {
+          case 'Turbo':
+            mode = Mode.TURBO;
+            break;
+          case 'Sleep':
+            mode = Mode.SLEEP;
+            break;
+          }
 
-        let status: Status = Status.OFF;
-        switch (parsed['D03-02']) {
-        case 'ON':
-          status = Status.ON;
-          break;
-        case 'OFF':
-          status = Status.OFF;
-          break;
-        }
+          let status: Status = Status.OFF;
+          switch (parsed['D03-02']) {
+          case 'ON':
+            status = Status.ON;
+            break;
+          case 'OFF':
+            status = Status.OFF;
+            break;
+          }
 
-        this.eventEmitter.emit('source:state', {
-          pm2_5: parsed['D03-33'],
-          mode,
-          status,
+          this.eventEmitter.emit('source:state', {
+            pm2_5: parsed['D03-33'],
+            mode,
+            status,
+          });
         });
       });
-    });
 
-    request.on('error', (err) => {
-      this.logger.error('Error while request on state', err);
+      request.on('error', (err) => {
+        this.logger.error('Error while request on state', err);
 
-      this.observeState();
-    });
+        this.observeState();
+      });
 
-    request.end();
+      request.end();
+    };
+
+    const triggerParams: object = {
+      'D03-03': true,
+    };
+    const onError = (err?: Error|null): void => {
+      this.logger.error(
+        'An error occurred on the first request for the ' +
+          'status retrieval trigger. Please try restarting ' +
+          'the device.',
+        err);
+    };
+
+    this.sendCommand(triggerParams)
+      .then(onSuccess.bind(this))
+      .catch(onError.bind(this));
   }
 
   private getSync(): Promise<Buffer> {
